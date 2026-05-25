@@ -1,0 +1,13 @@
+{
+  "name": "पंचायत डिजिटल पोर्टल",
+  "short_name": "पंचायत",
+  "description": "ग्राम पंचायत पथरिया जाट - डिजिटल पोर्टल",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#064E3B",
+  "orientation": "portrait-primary",
+  "icons": [],
+  "categories": ["government"],
+  "gcm_sender_id": "1234567890"
+}
