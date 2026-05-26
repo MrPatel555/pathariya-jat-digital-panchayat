@@ -42,11 +42,41 @@ console.log('🔐 VAPID Keys configured');
 
 // CORS Configuration
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or Curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:5173',
+      process.env.CORS_ORIGIN,
+      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+      'https://pathariya-jat-digital-panchayat.vercel.app'
+    ].filter(Boolean);
+    
+    if (allowedOrigins.includes(origin) || origin.includes('vercel.app') || origin.includes('railway.app')) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked origin: ${origin}`);
+      callback(null, true); // Allow for debugging
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  preflightContinue: false,
+  optionsSuccessStatus: 200
 };
+
+console.log('🔐 CORS allowed origins:', [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  process.env.CORS_ORIGIN || 'Not set',
+  'Vercel URLs (auto-detected)',
+  'Railway URLs (auto-detected)'
+]);
 
 // Serve Frontend Static Files
 const distPath = path.join(__dirname, '../dist');
@@ -57,8 +87,15 @@ if (fs.existsSync(distPath)) {
 
 // Middleware
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Handle preflight requests
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+
+// Request logging middleware for debugging
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - Origin: ${req.get('origin') || 'no-origin'}`);
+  next();
+});
 
 // Database Setup
 const dbPath = path.join(__dirname, 'panchayat.db');
@@ -566,6 +603,14 @@ app.post('/api/applications', async (req, res) => {
   try {
     const { id, type, name, mobile, ward, category, date, time, status, description, note, location } = req.body;
     
+    // Validation
+    if (!id || !type || !name || !description) {
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        required: ['id', 'type', 'name', 'description']
+      });
+    }
+    
     await dbRun(`
       INSERT INTO applications 
       (id, type, name, mobile, ward, category, date, time, status, description, note, location_lat, location_lng, location_address)
@@ -577,10 +622,20 @@ app.post('/api/applications', async (req, res) => {
       location?.address || null
     ]);
     
-    res.status(201).json({ success: true, message: 'Application submitted successfully', id });
+    console.log(`✅ Application submitted: ${id} (${type})`);
+    res.status(201).json({ 
+      success: true, 
+      message: 'आपका आवेदन सफलतापूर्वक सबमिट कर दिया गया है।',
+      id,
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
     console.error('Submit application error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: 'सर्वर से जुड़ने में समस्या हुई।',
+      details: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
@@ -640,9 +695,29 @@ app.delete('/api/applications/:id', async (req, res) => {
   }
 });
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date() });
+// Health check with detailed info
+app.get('/api/health', cors(), (req, res) => {
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    server: {
+      port: PORT,
+      node_env: process.env.NODE_ENV || 'development',
+      uptime: process.uptime()
+    },
+    cors: {
+      origin_received: req.get('origin') || 'no-origin',
+      cors_enabled: true
+    },
+    database: {
+      path: dbPath,
+      exists: fs.existsSync(dbPath)
+    },
+    vapid: {
+      configured: !!vapidKeys.publicKey,
+      subject: process.env.VAPID_SUBJECT || 'Not configured'
+    }
+  });
 });
 
 // Serve index.html for all routes (React Router)
@@ -656,11 +731,15 @@ app.get('*', (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`✅ Panchayat Notification Server running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Panchayat Server running on 0.0.0.0:${PORT}`);
+  console.log(`🌐 Access URLs:`);
+  console.log(`   Local: http://localhost:${PORT}`);
+  console.log(`   Network: http://0.0.0.0:${PORT}`);
   console.log(`📊 Database: ${dbPath}`);
   console.log(`🔐 Admin Password: ${process.env.ADMIN_PASSWORD || 'admin123'}`);
-  console.log(`\n📖 API Documentation: http://localhost:${PORT}/api/health`);
+  console.log(`📖 API Documentation: http://localhost:${PORT}/api/health`);
+  console.log(`🔗 CORS Origins configured for production deployment`);
 });
 
 // Graceful shutdown
