@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "server": "node backend/server.js",
     "server:dev": "node backend/server.js",
-    "start": "vite preview --host 0.0.0.0 --port 4173",
+    "start": "node backend/server.js",
     "heroku-postbuild": "npm run build"
   },
   "dependencies": {
