@@ -88,6 +88,7 @@ function AavedanSujhav() {
   const handlePermissionChange = (e) => {
     const checked = e.target.checked;
     setIsCheckboxChecked(checked);
+    console.log('✅ Permission checkbox:', checked);
 
     if (checked) {
       // 1. नोटिफिकेशन परमिशन
@@ -97,34 +98,50 @@ function AavedanSujhav() {
 
       // 2. लाइव लोकेशन परमिशन
       if ('geolocation' in navigator) {
+        console.log('📍 Getting location...');
         navigator.geolocation.getCurrentPosition(
           async (pos) => {
             const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            console.log('📍 Location coordinates:', newLoc);
+            
             try {
+              console.log('🌐 Fetching address from nominatim...');
               const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${newLoc.lat}&lon=${newLoc.lng}`);
-              const data = await res.json();
-              newLoc.address = data.display_name;
+              if (res.ok) {
+                const data = await res.json();
+                newLoc.address = data.display_name;
+                console.log('✅ Address fetched:', newLoc.address);
+              } else {
+                console.warn('⚠️ Nominatim API error');
+                newLoc.address = '';
+              }
             } catch (err) {
+              console.error('❌ Nominatim fetch error:', err);
               newLoc.address = '';
             }
+            console.log('📍 Final location object:', newLoc);
             setLocation(newLoc);
           },
           (err) => {
-            console.warn(err);
-            setIsCheckboxChecked(false); // परमिशन न मिलने पर अनचेक कर दें
+            console.error('❌ Geolocation error:', err);
+            setIsCheckboxChecked(false);
             if (err.code === err.PERMISSION_DENIED) {
-              alert("आपने लोकेशन की अनुमति देने से मना कर दिया है। फॉर्म जमा करने के लिए अपने ब्राउज़र के URL बार में 🔒 (ताले) के आइकॉन पर क्लिक करें और Location को 'Allow' करें।");
+              alert("❌ आपने लोकेशन की अनुमति देने से मना कर दिया है। \n\n🔒 फॉर्म जमा करने के लिए:\n1. अपने ब्राउज़र के URL बार में 🔒 (ताले) के आइकॉन पर क्लिक करें\n2. Location को 'Allow' करें\n3. फिर से checkbox दबाएं");
+            } else if (err.code === err.POSITION_UNAVAILABLE) {
+              alert("⚠️ आपका GPS (Location) बंद है। कृपया अपना Location चालू करें।");
             } else {
-              alert("लोकेशन प्राप्त करने में त्रुटि हुई। कृपया अपना GPS (Location) चालू करें।");
+              alert("❌ लोकेशन प्राप्त करने में त्रुटि: " + err.message);
             }
           },
-          { enableHighAccuracy: true }
+          { enableHighAccuracy: true, timeout: 10000 }
         );
       } else {
+        console.error('❌ Geolocation not available');
         setIsCheckboxChecked(false);
         alert("आपका ब्राउज़र लोकेशन सर्विस सपोर्ट नहीं करता है।");
       }
     } else {
+      console.log('📍 Location cleared');
       setLocation(null);
     }
   };
@@ -133,8 +150,10 @@ function AavedanSujhav() {
   const handleVoiceTyping = (e) => {
     if (e) e.preventDefault();
     
-    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-      alert("ब्राउज़र सुरक्षा: वॉइस टाइपिंग मोबाइल पर तभी काम करेगा जब वेबसाइट इंटरनेट पर Live (HTTPS) हो।");
+    // Allow on HTTPS or localhost only
+    const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost';
+    if (!isSecure) {
+      alert("ब्राउज़र सुरक्षा: वॉइस टाइपिंग के लिए HTTPS (सुरक्षित कनेक्शन) आवश्यक है।");
       return;
     }
 
@@ -572,9 +591,15 @@ function AavedanSujhav() {
 
                 {/* लाइव लोकेशन इंडिकेटर */}
                 {isCheckboxChecked && location && (
-                  <div style={{ fontSize: '13px', color: '#059669', display: 'flex', alignItems: 'center', gap: '6px', padding: '0 5px' }}>
-                    <i className="fas fa-map-marker-alt"></i>
-                    <span style={{ fontWeight: 'bold' }}>लाइव लोकेशन संलग्न: {location.address ? location.address : `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
+                  <div style={{ fontSize: '14px', color: '#059669', display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 12px', marginTop: '8px', background: '#ECFDF5', border: '2px solid #10B981', borderRadius: '8px', fontWeight: '600' }}>
+                    <i className="fas fa-map-marker-alt" style={{ fontSize: '16px' }}></i>
+                    <span>📍 लाइव लोकेशन संलग्न: <strong>{location.address && location.address.length > 0 ? location.address : `${location.lat.toFixed(4)}°, ${location.lng.toFixed(4)}°`}</strong></span>
+                  </div>
+                )}
+                {isCheckboxChecked && !location && (
+                  <div style={{ fontSize: '13px', color: '#F59E0B', display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 12px', marginTop: '8px', background: '#FFFBEB', border: '2px solid #FBBF24', borderRadius: '8px', fontWeight: '500' }}>
+                    <i className="fas fa-spinner fa-spin"></i>
+                    <span>📍 लोकेशन प्राप्त कर रहे हैं... कृपया प्रतीक्षा करें</span>
                   </div>
                 )}
 

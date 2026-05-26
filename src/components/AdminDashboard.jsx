@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { subscriptionManager } from '../utils/subscriptionManager';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return sessionStorage.getItem('isAdminLoggedIn') === 'true';
@@ -149,7 +151,7 @@ function AdminDashboard() {
   useEffect(() => {
     const fetchApps = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/applications');
+        const res = await fetch(`${API_URL}/api/applications`);
         if (res.ok) {
           const data = await res.json();
           // सर्वर से डेटा data.applications के रूप में आता है (इसे क्रैश होने से बचाने के लिए)
@@ -251,7 +253,7 @@ function AdminDashboard() {
     setIsUpdating(true);
     
     try {
-      const res = await fetch(`http://localhost:5000/api/applications/${selectedApp.id}`, {
+      const res = await fetch(`${API_URL}/api/applications/${selectedApp.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: selectedApp.status, note: selectedApp.note })
@@ -295,7 +297,7 @@ function AdminDashboard() {
       const updatedApp = { ...app, status: 'Resolved', note: 'संबंधित अधिकारी द्वारा आपकी समस्या का सफलतापूर्वक समाधान कर दिया गया है।' };
       
       try {
-        const res = await fetch(`http://localhost:5000/api/applications/${app.id}`, {
+        const res = await fetch(`${API_URL}/api/applications/${app.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: updatedApp.status, note: updatedApp.note })
@@ -324,7 +326,7 @@ function AdminDashboard() {
   const handleDelete = async () => {
     if(window.confirm("क्या आप वाकई इस आवेदन को हमेशा के लिए डिलीट (Delete) करना चाहते हैं? यह वापस नहीं आएगा।")) {
       try {
-        const res = await fetch(`http://localhost:5000/api/applications/${selectedApp.id}`, { method: 'DELETE' });
+        const res = await fetch(`${API_URL}/api/applications/${selectedApp.id}`, { method: 'DELETE' });
         if (res.ok) {
           const filteredApps = applications.filter(app => app.id !== selectedApp.id);
           setApplications(filteredApps);
@@ -343,7 +345,7 @@ function AdminDashboard() {
   const handleQuickDelete = async (app) => {
     if(window.confirm(`क्या आप वाकई आवेदन ID ${app.id} को हमेशा के लिए डिलीट (Delete) करना चाहते हैं? यह वापस नहीं आएगा।`)) {
       try {
-        const res = await fetch(`http://localhost:5000/api/applications/${app.id}`, { method: 'DELETE' });
+        const res = await fetch(`${API_URL}/api/applications/${app.id}`, { method: 'DELETE' });
         if (res.ok) {
           const filteredApps = applications.filter(a => a.id !== app.id);
           setApplications(filteredApps);
