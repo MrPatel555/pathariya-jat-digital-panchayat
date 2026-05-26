@@ -227,9 +227,15 @@ const broadcastLiveNotification = (payload) => {
 
 // API Routes
 
-// 0. Get VAPID Public Key
-app.get('/api/vapid-public-key', (req, res) => {
-  res.send(vapidKeys.publicKey);
+// 0. Get VAPID Public Key - CORS enabled
+app.options('/api/vapid-public-key', cors());
+app.get('/api/vapid-public-key', cors(), (req, res) => {
+  try {
+    res.type('text/plain').send(vapidKeys.publicKey);
+  } catch (error) {
+    console.error('Error sending VAPID key:', error);
+    res.status(500).json({ error: 'Failed to get VAPID key' });
+  }
 });
 
 // 1. Register for notifications
@@ -637,11 +643,6 @@ app.delete('/api/applications/:id', async (req, res) => {
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date() });
-});
-
-// Get VAPID Public Key (for frontend)
-app.get('/api/vapid-public-key', (req, res) => {
-  res.type('text/plain').send(vapidKeys.publicKey);
 });
 
 // Serve index.html for all routes (React Router)

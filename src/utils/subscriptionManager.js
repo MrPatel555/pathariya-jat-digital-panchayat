@@ -114,8 +114,32 @@ export const subscriptionManager = {
       }
 
       // Server से असली VAPID Public Key मंगाएं
-      const keyResponse = await fetch(`${this.API_URL}/api/vapid-public-key`);
-      const vapidPublicKey = await keyResponse.text();
+      console.log('🔑 Fetching VAPID key from:', `${this.API_URL}/api/vapid-public-key`);
+      
+      let vapidPublicKey;
+      try {
+        const keyResponse = await fetch(`${this.API_URL}/api/vapid-public-key`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'text/plain'
+          }
+        });
+        
+        if (!keyResponse.ok) {
+          throw new Error(`VAPID fetch failed with status ${keyResponse.status}: ${keyResponse.statusText}`);
+        }
+        
+        vapidPublicKey = await keyResponse.text();
+        
+        if (!vapidPublicKey || vapidPublicKey.length < 10) {
+          throw new Error('Invalid VAPID public key received from server');
+        }
+        
+        console.log('✅ VAPID key fetched successfully');
+      } catch (vapidFetchError) {
+        console.error('❌ Failed to fetch VAPID key:', vapidFetchError);
+        throw new Error(`Cannot get VAPID key: ${vapidFetchError.message}. Backend might be unreachable.`);
+      }
 
       // अगर पहले से subscription है तो उसे हटा दें (ताकि नई Key के साथ फ्रेश बने)
       let subscription = await registration.pushManager.getSubscription();
