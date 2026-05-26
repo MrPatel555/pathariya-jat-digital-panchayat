@@ -639,6 +639,11 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date() });
 });
 
+// Get VAPID Public Key (for frontend)
+app.get('/api/vapid-public-key', (req, res) => {
+  res.type('text/plain').send(vapidKeys.publicKey);
+});
+
 // Serve index.html for all routes (React Router)
 app.get('*', (req, res) => {
   const indexPath = path.join(distPath, 'index.html');

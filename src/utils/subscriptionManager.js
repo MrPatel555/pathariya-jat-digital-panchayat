@@ -1,6 +1,20 @@
 // Subscription Manager Utility
 // यह यूटिलिटी नोटिफिकेशन subscriptions को manage करने के लिए है
 
+// Get API URL from environment variables
+const getApiUrl = () => {
+  // In production (Vercel), use VITE_API_URL
+  if (typeof window !== 'undefined' && import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  // In development, use localhost
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return 'http://localhost:5000';
+  }
+  // Fallback
+  return 'http://localhost:5000';
+};
+
 // Cross-browser storage utility - सभी browsers में काम करता है
 const storageUtil = {
   set: (key, value) => {
@@ -49,10 +63,14 @@ const getClientId = () => {
 };
 
 export const subscriptionManager = {
-  API_URL: typeof window !== 'undefined' ? `http://${window.location.hostname}:5000` : 'http://localhost:5000',
+  API_URL: getApiUrl(),
 
   // Service Worker को register करें
   async registerServiceWorker() {
+    console.log('🔗 Using API URL:', this.API_URL);
+    console.log('🌐 Environment VITE_API_URL:', import.meta.env.VITE_API_URL);
+    console.log('📍 Hostname:', window.location.hostname);
+    
     if (!('serviceWorker' in navigator)) {
       console.error('❌ Service Workers not supported in this browser');
       throw new Error('Service Workers not supported');

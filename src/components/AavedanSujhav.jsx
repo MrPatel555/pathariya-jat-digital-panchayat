@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+// Get API URL from environment variables
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 function AavedanSujhav() {
   const [formType, setFormType] = useState('aavedan'); // 'aavedan' or 'sujhav'
   const [description, setDescription] = useState('');
@@ -44,7 +47,7 @@ function AavedanSujhav() {
     if (submittedData?.isTracking && submittedData?.refNumber) {
       interval = setInterval(async () => {
         try {
-          const res = await fetch(`http://localhost:5000/api/applications/${submittedData.refNumber}`);
+          const res = await fetch(`${API_URL}/api/applications/${submittedData.refNumber}`);
           if (res.ok) {
             const updatedApp = await res.json();
             if (updatedApp && (updatedApp.status !== submittedData.status || updatedApp.note !== submittedData.note)) {
@@ -261,7 +264,7 @@ function AavedanSujhav() {
         location: liveLoc
       };
       
-      fetch('http://localhost:5000/api/applications', {
+      fetch(`${API_URL}/api/applications`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newApp)
@@ -364,7 +367,7 @@ function AavedanSujhav() {
     }
 
     try {
-      const res = await fetch(`http://localhost:5000/api/applications/${searchRefId.trim()}`);
+      const res = await fetch(`${API_URL}/api/applications/${searchRefId.trim()}`);
       if (res.ok) {
         const found = await res.json();
         // फॉर्म की तरह ही पूरा पेज दिखाने के लिए डेटा सेट करें
