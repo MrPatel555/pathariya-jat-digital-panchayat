@@ -187,6 +187,13 @@ function AavedanSujhav() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    const trimmedDescription = description.trim();
+    if (!trimmedDescription) {
+      alert(formType === 'aavedan' ? 'कृपया समस्या का विवरण लिखें।' : 'कृपया सुझाव का विवरण लिखें।');
+      return;
+    }
+
     setIsLoading(true);
     
     const successMsg = formType === 'aavedan' 
@@ -208,7 +215,7 @@ function AavedanSujhav() {
       date: today,
       time: timeNow,
       status: 'Pending',
-      description: description,
+      description: trimmedDescription,
       note: '',
       location: null
     };
@@ -218,8 +225,9 @@ function AavedanSujhav() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newApp)
     })
-    .then(res => {
-      if (!res.ok) throw new Error("Server Error");
+    .then(async res => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.details || data.error || `Server Error ${res.status}`);
       setSubmittedData({ refNumber: newRefNum, date: today, time: timeNow, status: 'Pending', note: '' });
       setIsSubmitted(true);
       setIsLoading(false);
@@ -254,7 +262,7 @@ function AavedanSujhav() {
     })
     .catch(err => {
       console.error("Submit Error:", err);
-      alert("सर्वर से जुड़ने में समस्या हुई।");
+      alert(`सर्वर से जुड़ने में समस्या हुई।\n${err.message || 'कृपया दोबारा प्रयास करें।'}\nAPI: ${API_URL}`);
       setIsLoading(false);
     });
   };
@@ -427,7 +435,7 @@ function AavedanSujhav() {
                   </label>
                   
                   <div style={{ position: 'relative' }}>
-                    <textarea rows="5" placeholder={isListening ? 'बोलिए, मैं सुन रहा हूँ...' : 'यहाँ विस्तार से लिखें...'} value={description} onChange={(e) => setDescription(e.target.value)} style={{ width: '100%', padding: '15px 50px 15px 15px', borderRadius: '10px', border: '1px solid #CBD5E1', fontSize: '15px', outline: 'none', resize: 'vertical', transition: 'border 0.3s' }} onFocus={e => e.target.style.borderColor = '#D4AF37'} onBlur={e => e.target.style.borderColor = '#CBD5E1'}></textarea>
+                    <textarea rows="5" required placeholder={isListening ? 'बोलिए, मैं सुन रहा हूँ...' : 'यहाँ विस्तार से लिखें...'} value={description} onChange={(e) => setDescription(e.target.value)} style={{ width: '100%', padding: '15px 50px 15px 15px', borderRadius: '10px', border: '1px solid #CBD5E1', fontSize: '15px', outline: 'none', resize: 'vertical', transition: 'border 0.3s' }} onFocus={e => e.target.style.borderColor = '#D4AF37'} onBlur={e => e.target.style.borderColor = '#CBD5E1'}></textarea>
                     
                     <button type="button" onClick={handleVoiceTyping} title="बोलकर टाइप करें" style={{ position: 'absolute', top: '10px', right: '10px', background: isListening ? '#DC2626' : '#F1F5F9', color: isListening ? '#fff' : '#64748B', width: '35px', height: '35px', borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s', animation: isListening ? 'pulse-mic-aavedan 1.5s infinite' : 'none' }}>
                       <i className={isListening ? "fas fa-microphone" : "fas fa-microphone-alt"}></i>
