@@ -1,19 +1,7 @@
 // Subscription Manager Utility
 // यह यूटिलिटी नोटिफिकेशन subscriptions को manage करने के लिए है
 
-// Get API URL from environment variables
-const getApiUrl = () => {
-  // In production (Vercel), use VITE_API_URL
-  if (typeof window !== 'undefined' && import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
-  // In development, use localhost
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    return 'http://localhost:5000';
-  }
-  // Fallback
-  return 'http://localhost:5000';
-};
+import { API_URL } from '../config/api';
 
 // Cross-browser storage utility - सभी browsers में काम करता है
 const storageUtil = {
@@ -63,7 +51,7 @@ const getClientId = () => {
 };
 
 export const subscriptionManager = {
-  API_URL: getApiUrl(),
+  API_URL,
 
   // Service Worker को register करें
   async registerServiceWorker() {

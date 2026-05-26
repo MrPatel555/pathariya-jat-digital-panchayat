@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-// Get API URL from environment variables
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { API_URL } from '../config/api';
 
 function AavedanSujhav() {
   const [formType, setFormType] = useState('aavedan'); // 'aavedan' or 'sujhav'

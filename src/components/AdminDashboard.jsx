@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { subscriptionManager } from '../utils/subscriptionManager';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { API_URL } from '../config/api';
 
 function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
