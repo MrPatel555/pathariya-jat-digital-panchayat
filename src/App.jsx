@@ -47,6 +47,26 @@ function App() {
     subscriptionManager.initLiveNotifications();
   }, []);
 
+  // Security: Prevent Right-Click and Inspect Element (F12, Ctrl+Shift+I, Ctrl+U)
+  useEffect(() => {
+    const handleContextMenu = (e) => e.preventDefault();
+    const handleKeyDown = (e) => {
+      if (
+        e.key === 'F12' ||
+        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
+        (e.ctrlKey && (e.key === 'U' || e.key === 'u'))
+      ) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('contextmenu', handleContextMenu);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('contextmenu', handleContextMenu);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   // /admin और #admin दोनों के लिए परफेक्ट राउटिंग
   const isAdminRoute = currentPath.includes('/admin') || currentPath.includes('#admin');
 

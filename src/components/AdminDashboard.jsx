@@ -150,7 +150,12 @@ function AdminDashboard() {
   useEffect(() => {
     const fetchApps = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/applications`);
+        const adminPwd = sessionStorage.getItem('adminPassword');
+        if (!adminPwd) return; // Don't fetch if not logged in
+        
+        const res = await fetch(`${API_URL}/api/applications`, {
+          headers: { 'x-admin-password': adminPwd }
+        });
         if (res.ok) {
           const data = await res.json();
           // सर्वर से डेटा data.applications के रूप में आता है (इसे क्रैश होने से बचाने के लिए)
@@ -228,14 +233,24 @@ function AdminDashboard() {
   };
 
   // लॉगिन हैंडलर
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (password === 'Sachin@542') {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('isAdminLoggedIn', 'true');
-      setError('');
-    } else {
-      setError('गलत पासवर्ड! कृपया सही पासवर्ड दर्ज करें।');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      if (res.ok) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem('isAdminLoggedIn', 'true');
+        sessionStorage.setItem('adminPassword', password);
+        setError('');
+      } else {
+        setError('गलत पासवर्ड! कृपया सही पासवर्ड दर्ज करें।');
+      }
+    } catch (err) {
+      setError('सर्वर से जुड़ने में समस्या हुई।');
     }
   };
 
@@ -244,6 +259,7 @@ function AdminDashboard() {
     setIsAuthenticated(false);
     setPassword('');
     sessionStorage.removeItem('isAdminLoggedIn');
+    sessionStorage.removeItem('adminPassword');
   };
 
   // आवेदन का स्टेटस और नोट अपडेट करना
@@ -254,7 +270,10 @@ function AdminDashboard() {
     try {
       const res = await fetch(`${API_URL}/api/applications/${selectedApp.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-password': sessionStorage.getItem('adminPassword')
+        },
         body: JSON.stringify({ status: selectedApp.status, note: selectedApp.note })
       });
 
@@ -298,7 +317,10 @@ function AdminDashboard() {
       try {
         const res = await fetch(`${API_URL}/api/applications/${app.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-admin-password': sessionStorage.getItem('adminPassword')
+          },
           body: JSON.stringify({ status: updatedApp.status, note: updatedApp.note })
         });
         
@@ -325,7 +347,10 @@ function AdminDashboard() {
   const handleDelete = async () => {
     if(window.confirm("क्या आप वाकई इस आवेदन को हमेशा के लिए डिलीट (Delete) करना चाहते हैं? यह वापस नहीं आएगा।")) {
       try {
-        const res = await fetch(`${API_URL}/api/applications/${selectedApp.id}`, { method: 'DELETE' });
+        const res = await fetch(`${API_URL}/api/applications/${selectedApp.id}`, { 
+          method: 'DELETE',
+          headers: { 'x-admin-password': sessionStorage.getItem('adminPassword') }
+        });
         if (res.ok) {
           const filteredApps = applications.filter(app => app.id !== selectedApp.id);
           setApplications(filteredApps);
@@ -344,7 +369,10 @@ function AdminDashboard() {
   const handleQuickDelete = async (app) => {
     if(window.confirm(`क्या आप वाकई आवेदन ID ${app.id} को हमेशा के लिए डिलीट (Delete) करना चाहते हैं? यह वापस नहीं आएगा।`)) {
       try {
-        const res = await fetch(`${API_URL}/api/applications/${app.id}`, { method: 'DELETE' });
+        const res = await fetch(`${API_URL}/api/applications/${app.id}`, { 
+          method: 'DELETE',
+          headers: { 'x-admin-password': sessionStorage.getItem('adminPassword') }
+        });
         if (res.ok) {
           const filteredApps = applications.filter(a => a.id !== app.id);
           setApplications(filteredApps);

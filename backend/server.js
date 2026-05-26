@@ -156,6 +156,24 @@ app.options('*', cors(corsOptions)); // Handle preflight requests
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
+// Security & Anti-Scraping Middleware
+app.use((req, res, next) => {
+  // Prevent Website Downloaders (HTTrack, Wget, Scrapers, Curl)
+  const userAgent = req.headers['user-agent'] || '';
+  const blockedAgents = ['httrack', 'wget', 'curl', 'python', 'scrapy', 'bot', 'spider', 'crawler'];
+  
+  if (blockedAgents.some(bot => userAgent.toLowerCase().includes(bot))) {
+    return res.status(403).json({ error: 'Access Denied: Scraping/Downloading is strictly prohibited.' });
+  }
+
+  // Basic Security Headers
+  res.setHeader('X-Content-Type-Options', 'nosniff'); // Prevent MIME sniffing
+  res.setHeader('X-Frame-Options', 'DENY'); // Prevent clickjacking (iframe embedding)
+  res.setHeader('X-XSS-Protection', '1; mode=block'); // Basic XSS protection
+  
+  next();
+});
+
 // Request logging middleware for debugging
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - Origin: ${req.get('origin') || 'no-origin'}`);
@@ -285,8 +303,30 @@ app.get('/api/subscriptions-count', async (req, res) => {
   }
 });
 
+// Admin Authentication Middleware
+const adminAuth = (req, res, next) => {
+  const authHeader = req.headers['x-admin-password'];
+  const correctPassword = process.env.ADMIN_PASSWORD || 'Sachin@542';
+  if (authHeader === correctPassword) {
+    next();
+  } else {
+    res.status(401).json({ error: 'Unauthorized: Invalid Admin Password' });
+  }
+};
+
+// Verify Admin Password API
+app.post('/api/admin/verify', (req, res) => {
+  const { password } = req.body;
+  const correctPassword = process.env.ADMIN_PASSWORD || 'Sachin@542';
+  if (password === correctPassword) {
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ error: 'Invalid password' });
+  }
+});
+
 // 3. Get all active subscriptions (for admin only - add auth later)
-app.get('/api/subscriptions', async (req, res) => {
+app.get('/api/subscriptions', adminAuth, async (req, res) => {
   try {
     const subscriptions = await Subscription.find({ isActive: true })
       .select('_id deviceName browserName subscribedAt')
@@ -339,7 +379,7 @@ app.post('/api/send-notification', async (req, res) => {
     const { title, message, imageUrl, adminPassword } = req.body;
 
     // Simple auth - replace with proper auth later
-    const correctPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const correctPassword = process.env.ADMIN_PASSWORD || 'Sachin@542';
     if (adminPassword !== correctPassword) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -602,7 +642,7 @@ app.get('/api/applications/:id', async (req, res) => {
 });
 
 // 10. Get all applications (Admin view)
-app.get('/api/applications', async (req, res) => {
+app.get('/api/applications', adminAuth, async (req, res) => {
   try {
     const applications = await Application.find({}).sort({ createdAt: -1 });
     res.json({ applications });
@@ -613,7 +653,7 @@ app.get('/api/applications', async (req, res) => {
 });
 
 // 11. Update application status (Admin)
-app.put('/api/applications/:id', async (req, res) => {
+app.put('/api/applications/:id', adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { status, note } = req.body;
@@ -629,7 +669,7 @@ app.put('/api/applications/:id', async (req, res) => {
 });
 
 // 12. Delete an application (Admin)
-app.delete('/api/applications/:id', async (req, res) => {
+app.delete('/api/applications/:id', adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
     await Application.deleteOne({ _id: id });
@@ -683,7 +723,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`   Local: http://localhost:${PORT}`);
   console.log(`   Network: http://0.0.0.0:${PORT}`);
   console.log(`📊 Database: MongoDB Atlas (panchayatDB)`);
-  console.log(`🔐 Admin Password: ${process.env.ADMIN_PASSWORD || 'admin123'}`);
+  console.log(`🔐 Admin Password: ${process.env.ADMIN_PASSWORD || 'Sachin@542'}`);
   console.log(`📖 API Documentation: http://localhost:${PORT}/api/health`);
   console.log(`🔗 CORS Origins configured for production deployment`);
 });

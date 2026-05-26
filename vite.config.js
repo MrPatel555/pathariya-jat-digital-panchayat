@@ -18,8 +18,14 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
-      sourcemap: false,
-      minify: 'terser'
+      sourcemap: false, // Ensures source code is not visible in browser
+      minify: 'terser',
+      terserOptions: {
+        compress: {
+          drop_console: true, // Removes console.log in production
+          drop_debugger: true // Removes debugger statements
+        }
+      }
     },
     define: {
       __API_URL__: JSON.stringify(env.VITE_API_URL || 'https://web-production-472a78.up.railway.app')
