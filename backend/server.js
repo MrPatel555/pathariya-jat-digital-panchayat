@@ -223,6 +223,31 @@ db.serialize(() => {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  const applicationMigrations = [
+    ['type', 'ALTER TABLE applications ADD COLUMN type TEXT'],
+    ['name', 'ALTER TABLE applications ADD COLUMN name TEXT'],
+    ['mobile', 'ALTER TABLE applications ADD COLUMN mobile TEXT'],
+    ['ward', 'ALTER TABLE applications ADD COLUMN ward TEXT'],
+    ['category', 'ALTER TABLE applications ADD COLUMN category TEXT'],
+    ['date', 'ALTER TABLE applications ADD COLUMN date TEXT'],
+    ['time', 'ALTER TABLE applications ADD COLUMN time TEXT'],
+    ['status', "ALTER TABLE applications ADD COLUMN status TEXT DEFAULT 'Pending'"],
+    ['description', 'ALTER TABLE applications ADD COLUMN description TEXT'],
+    ['note', 'ALTER TABLE applications ADD COLUMN note TEXT'],
+    ['location_lat', 'ALTER TABLE applications ADD COLUMN location_lat REAL'],
+    ['location_lng', 'ALTER TABLE applications ADD COLUMN location_lng REAL'],
+    ['location_address', 'ALTER TABLE applications ADD COLUMN location_address TEXT'],
+    ['created_at', 'ALTER TABLE applications ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP']
+  ];
+
+  applicationMigrations.forEach(([column, sql]) => {
+    db.run(sql, (err) => {
+      if (err && !err.message.includes('duplicate column name')) {
+        console.error(`Migration error adding applications.${column}:`, err.message);
+      }
+    });
+  });
 });
 
 // Helper function to generate ID
