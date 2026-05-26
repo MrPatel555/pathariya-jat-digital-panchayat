@@ -19,7 +19,6 @@ function AavedanSujhav() {
   const audioChunksRef = useRef([]);
   const [fileName, setFileName] = useState('');
   const [fileData, setFileData] = useState(null);
-  const [location, setLocation] = useState(null);
   
   // चेकबॉक्स (Permission) स्टेट
   const [isCheckboxChecked, setIsCheckboxChecked] = useState(false);
@@ -84,106 +83,11 @@ function AavedanSujhav() {
     return () => clearInterval(interval);
   }, [submittedData]);
 
-  // --- Checkbox Permission Logic - Location (GPS + IP Fallback) ---
+  // --- Checkbox Permission Logic - सिर्फ Agree करना है ---
   const handlePermissionChange = (e) => {
     const checked = e.target.checked;
     setIsCheckboxChecked(checked);
-    console.log('✅ Permission checkbox:', checked);
-
-    if (checked) {
-      requestLocation();
-    } else {
-      console.log('📍 Location cleared');
-      setLocation(null);
-    }
-  };
-
-  // Location request with GPS + IP fallback
-  const requestLocation = async () => {
-    try {
-      if ('geolocation' in navigator) {
-        console.log('📍 Step 1: Trying GPS...');
-        
-        // GPS को 5 सेकंड देंगे, अगर fail हो तो IP से लेंगे
-        const gpsPromise = new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              console.log('📍 ✅ GPS successful:', pos.coords);
-              resolve({ type: 'gps', lat: pos.coords.latitude, lng: pos.coords.longitude });
-            },
-            (err) => {
-              console.warn('📍 GPS failed:', err.code);
-              reject(err);
-            },
-            { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
-          );
-        });
-
-        try {
-          // GPS की कोशिश करें
-          const gpsResult = await gpsPromise;
-          await setLocationData(gpsResult.lat, gpsResult.lng, 'GPS');
-        } catch (gpsErr) {
-          // GPS fail हो गया - IP fallback करेंगे
-          console.warn('📍 GPS not available, trying IP-based location...');
-          
-          if (gpsErr.code === gpsErr.PERMISSION_DENIED) {
-            // User ने permission deny किया
-            alert("❌ आपने लोकेशन की अनुमति देने से मना कर दिया है।\n\n💡 Desktop पर: बिना GPS के IP से Location मिलेगा\nMobile पर: कृपया GPS को 'Allow' करें");
-            setIsCheckboxChecked(false);
-            return;
-          }
-
-          // GPS fail - अब IP से location लेंगे
-          try {
-            console.log('🌐 Fetching location from IP API...');
-            const ipRes = await fetch('https://ip-api.com/json/?fields=lat,lon,city,regionName,country');
-            
-            if (ipRes.ok) {
-              const ipData = await ipRes.json();
-              console.log('📍 ✅ IP Location:', ipData);
-              await setLocationData(ipData.lat, ipData.lon, 'IP-Based (Approximate)');
-            } else {
-              throw new Error('IP API failed');
-            }
-          } catch (ipErr) {
-            console.error('❌ Both GPS and IP location failed:', ipErr);
-            setIsCheckboxChecked(false);
-            alert("⚠️ लोकेशन प्राप्त नहीं हो सकी। कृपया:\n1. GPS चालू करें (Mobile)\n2. या बाद में पुनः प्रयास करें (Desktop)");
-          }
-        }
-      } else {
-        console.error('❌ Geolocation not supported');
-        setIsCheckboxChecked(false);
-        alert("आपका ब्राउज़र लोकेशन सर्विस सपोर्ट नहीं करता है।");
-      }
-    } catch (err) {
-      console.error('❌ Location error:', err);
-      setIsCheckboxChecked(false);
-    }
-  };
-
-  // Helper function to set location data
-  const setLocationData = async (lat, lng, locationType) => {
-    const newLoc = { lat, lng, type: locationType };
-    console.log(`📍 Location (${locationType}):`, newLoc);
-    
-    try {
-      // Address reverse-geocode करने की कोशिश
-      console.log('🌐 Fetching address...');
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-      if (res.ok) {
-        const data = await res.json();
-        newLoc.address = data.display_name;
-        console.log('✅ Address:', newLoc.address);
-      }
-    } catch (err) {
-      console.warn('⚠️ Address not available');
-      newLoc.address = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-    }
-    
-    console.log('📍 Final location:', newLoc);
-    setLocation(newLoc);
+    console.log('✅ Checkbox:', checked ? 'checked' : 'unchecked');
   };
 
   // --- Voice Typing Logic ---
@@ -284,18 +188,76 @@ function AavedanSujhav() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setIsLoading(true); // सबमिट करते ही लोडिंग एनीमेशन शुरू करें
+    setIsLoading(true);
     
-    const processSubmit = (liveLoc) => {
-      // लोकेशन अनिवार्य है। अगर लोकेशन नहीं मिली तो फॉर्म सबमिट नहीं होगा।
-      if (!liveLoc) {
-        alert("लाइव लोकेशन प्राप्त नहीं हो सकी। कृपया चेकबॉक्स पर टिक करें और लोकेशन की अनुमति (Allow) दें।");
-        setIsLoading(false); // एरर पर लोडिंग रोकें
-        return;
-      }
+    const successMsg = formType === 'aavedan' 
+      ? "आपका आवेदन सफलतापूर्वक सबमिट कर दिया गया है। पंचायत सचिव जल्द ही आपसे संपर्क करेंगे।" 
+      : "आपका बहुमूल्य सुझाव पंचायत को प्राप्त हो गया है। धन्यवाद!";
 
-      // यहाँ आप API या Backend में फॉर्म डेटा (text, audio file, liveLoc) भेज सकते हैं
-      console.log("Submitting form with location:", liveLoc);
+    const newRefNum = 'PJ-' + Math.floor(100000 + Math.random() * 900000);
+    const today = new Date().toLocaleDateString('hi-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeNow = new Date().toLocaleTimeString('hi-IN', { hour: '2-digit', minute: '2-digit' });
+
+    const formData = new FormData(e.target);
+    const newApp = {
+      id: newRefNum,
+      type: formType,
+      name: formData.get('applicantName') || 'अज्ञात',
+      mobile: formData.get('mobile') || 'जानकारी नहीं',
+      ward: formData.get('ward') || 'जानकारी नहीं',
+      category: formData.get('category') || 'other',
+      date: today,
+      time: timeNow,
+      status: 'Pending',
+      description: description,
+      note: '',
+      location: null
+    };
+    
+    fetch(`${API_URL}/api/applications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newApp)
+    })
+    .then(res => {
+      if (!res.ok) throw new Error("Server Error");
+      setSubmittedData({ refNumber: newRefNum, date: today, time: timeNow, status: 'Pending', note: '' });
+      setIsSubmitted(true);
+      setIsLoading(false);
+      
+      // फॉर्म सबमिट होने पर सिस्टम का पुश नोटिफिकेशन भेजना
+      const sendLocalNotification = () => {
+        const title = "पंचायत पोर्टल";
+        const options = { body: successMsg, icon: '/logo.png' };
+        
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('/sw.js').then(reg => {
+            reg.showNotification(title, options);
+          }).catch(e => {
+            try { new Notification(title, options); } catch(err) {}
+          });
+        } else {
+          try { new Notification(title, options); } catch(e) {}
+        }
+      };
+
+      if ('Notification' in window) {
+        if (Notification.permission === 'granted') {
+          sendLocalNotification();
+        } else if (Notification.permission !== 'denied') {
+          Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
+              sendLocalNotification();
+            }
+          });
+        }
+      }
+    })
+    .catch(err => {
+      console.error("Submit Error:", err);
+      alert("सर्वर से जुड़ने में समस्या हुई।");
+      setIsLoading(false);
+    });
       
       const successMsg = formType === 'aavedan' 
         ? "आपका आवेदन सफलतापूर्वक सबमिट कर दिया गया है। पंचायत सचिव जल्द ही आपसे संपर्क करेंगे।" 
@@ -364,45 +326,9 @@ function AavedanSujhav() {
       })
       .catch(err => {
         console.error("Submit Error:", err);
-        alert("सर्वर से जुड़ने में समस्या हुई। कृपया सुनिश्चित करें कि Backend Server चल रहा है।");
+        alert("सर्वर से जुड़ने में समस्या हुई।");
         setIsLoading(false);
       });
-    };
-
-    // सबमिट करते समय बिलकुल ताज़ा (Live) लोकेशन कैप्चर करना
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${newLoc.lat}&lon=${newLoc.lng}`);
-            const data = await res.json();
-            newLoc.address = data.display_name;
-          } catch (err) {
-            newLoc.address = '';
-          }
-          setLocation(newLoc);
-          processSubmit(newLoc);
-        },
-        async (err) => {
-          // अगर अभी लोकेशन फेल हो जाए, तो पुरानी (Load Time) लोकेशन का इस्तेमाल करें
-          if (location && !location.address) {
-            try {
-              const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.lat}&lon=${location.lng}`);
-              const data = await res.json();
-              location.address = data.display_name;
-            } catch (error) {
-              location.address = '';
-            }
-          }
-          processSubmit(location);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    } else {
-      setIsLoading(false);
-      alert("आपका ब्राउज़र लोकेशन सर्विस सपोर्ट नहीं करता है।");
-    }
   };
 
   // कॉपी करने का फंक्शन
@@ -625,23 +551,11 @@ function AavedanSujhav() {
                     style={{ width: '18px', height: '18px', marginTop: '3px', cursor: 'pointer' }}
                   />
                   <label htmlFor="perm-checkbox" style={{ fontSize: '14px', color: '#4B5563', lineHeight: '1.5', cursor: 'pointer', margin: 0 }}>
-                    मैं प्रमाणित करता/करती हूँ कि दी गई जानकारी सही है। साथ ही, सुरक्षा एवं पारदर्शिता हेतु मैं अपनी <b>लाइव लोकेशन (GPS)</b> और <b>नोटिफिकेशन</b> की अनुमति देता/देती हूँ। <span style={{color: '#DC2626'}}>*</span>
+                    मैं प्रमाणित करता/करती हूँ कि दी गई जानकारी सही है। साथ ही, महत्वपूर्ण अपडेट के लिए मैं <b>नोटिफिकेशन</b> की अनुमति देता/देती हूँ। <span style={{color: '#DC2626'}}>*</span>
                   </label>
                 </div>
 
-                {/* लाइव लोकेशन इंडिकेटर */}
-                {isCheckboxChecked && location && (
-                  <div style={{ fontSize: '14px', color: '#059669', display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 12px', marginTop: '8px', background: '#ECFDF5', border: '2px solid #10B981', borderRadius: '8px', fontWeight: '600' }}>
-                    <i className="fas fa-map-marker-alt" style={{ fontSize: '16px' }}></i>
-                    <span>📍 लाइव लोकेशन संलग्न: <strong>{location.address && location.address.length > 0 ? location.address : `${location.lat.toFixed(4)}°, ${location.lng.toFixed(4)}°`}</strong></span>
-                  </div>
-                )}
-                {isCheckboxChecked && !location && (
-                  <div style={{ fontSize: '13px', color: '#F59E0B', display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 12px', marginTop: '8px', background: '#FFFBEB', border: '2px solid #FBBF24', borderRadius: '8px', fontWeight: '500' }}>
-                    <i className="fas fa-spinner fa-spin"></i>
-                    <span>📍 लोकेशन प्राप्त कर रहे हैं... कृपया प्रतीक्षा करें</span>
-                  </div>
-                )}
+                {/* Location UI removed - no GPS needed */}
 
                 <button type="submit" disabled={isLoading} style={{ opacity: isLoading ? 0.7 : 1, marginTop: '10px', background: 'linear-gradient(135deg, #D4AF37, #9A7B3E)', color: '#022C22', padding: '16px', borderRadius: '10px', border: 'none', fontSize: '16px', fontWeight: '700', cursor: isLoading ? 'not-allowed' : 'pointer', boxShadow: '0 8px 20px rgba(212,175,55,0.3)', transition: 'all 0.3s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }} onMouseOver={e => !isLoading && (e.currentTarget.style.transform = 'translateY(-3px)')} onMouseOut={e => !isLoading && (e.currentTarget.style.transform = 'translateY(0)')}>
                   {isLoading ? 'प्रतीक्षा करें...' : (formType === 'aavedan' ? 'आवेदन दर्ज करें' : 'सुझाव भेजें')} 
