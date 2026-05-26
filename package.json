@@ -9,8 +9,10 @@
     "preview": "vite preview",
     "server": "node backend/server.js",
     "server:dev": "node backend/server.js",
-    "start": "node backend/server.js",
-    "heroku-postbuild": "npm run build"
+    "install:all": "npm install && cd backend && npm install && cd ..",
+    "build:all": "npm run build && cd backend && npm install && cd ..",
+    "start": "npm run build:all && node backend/server.js",
+    "heroku-postbuild": "npm run build:all"
   },
   "dependencies": {
     "cors": "^2.8.6",
