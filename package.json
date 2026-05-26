@@ -13,6 +13,9 @@
     "heroku-postbuild": "npm run build"
   },
   "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "web-push": "^3.6.7"
