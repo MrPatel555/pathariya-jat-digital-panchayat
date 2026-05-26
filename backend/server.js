@@ -106,7 +106,7 @@ app.use((req, res, next) => {
 });
 
 // Database Setup
-const dbPath = path.join(__dirname, 'panchayat.db');
+const dbPath = process.env.DATABASE_PATH || path.join(__dirname, 'panchayat.db');
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Database connection error:', err);
