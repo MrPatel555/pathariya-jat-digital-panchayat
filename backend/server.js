@@ -1,23 +1,80 @@
-import express from 'express';
-import cors from 'cors';
-import bodyParser from 'body-parser';
-import sqlite3 from 'sqlite3';
+import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import crypto from 'crypto';
 import fs from 'fs';
-import webpush from 'web-push';
-import dotenv from 'dotenv';
-
-// Load environment variables
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load environment variables - MUST BE FIRST
+const envPath = path.resolve(__dirname, '.env');
+console.log(`📁 Looking for .env at: ${envPath}`);
+console.log(`✓ .env exists: ${fs.existsSync(envPath)}`);
+
+dotenv.config({ path: envPath });
+
+// Debug: Log what was loaded
+console.log(`✓ PORT: ${process.env.PORT || 'NOT SET'}`);
+console.log(`✓ MONGODB_URI: ${process.env.MONGODB_URI ? 'SET' : 'NOT SET'}`);
+
+// If dotenv didn't load, read manually
+if (!process.env.MONGODB_URI && fs.existsSync(envPath)) {
+  const content = fs.readFileSync(envPath, 'utf8');
+  const lines = content.split('\n');
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    
+    const idx = trimmed.indexOf('=');
+    if (idx > 0) {
+      const key = trimmed.substring(0, idx).trim();
+      const val = trimmed.substring(idx + 1).trim();
+      process.env[key] = val;
+    }
+  }
+}
+
+import express from 'express';
+import cors from 'cors';
+import bodyParser from 'body-parser';
+import mongoose from 'mongoose';
+import crypto from 'crypto';
+import webpush from 'web-push';
+import Subscription from './models/Subscription.js';
+import NotificationSent from './models/NotificationSent.js';
+import NotificationDelivery from './models/NotificationDelivery.js';
+import Application from './models/Application.js';
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 const liveNotificationClients = new Set();
+
+// MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI;
+
+console.log('\n=== MongoDB Configuration ===');
+if (!MONGODB_URI) {
+  console.error('❌ CRITICAL: MONGODB_URI is not set!');
+  console.error('Environment variables loaded:', Object.keys(process.env).filter(k => k.includes('MONGO') || k.includes('PORT')));
+  process.exit(1);
+}
+
+console.log('✅ MONGODB_URI is set');
+console.log('🔐 Connecting to MongoDB Atlas...');
+
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+  .then(() => {
+    console.log('✅ MongoDB Connected successfully');
+    console.log('✅ Database: panchayatDB');
+  })
+  .catch((err) => {
+    console.error('❌ MongoDB connection failed:', err.message);
+    process.exit(1);
+  });
 
 // Setup Web Push VAPID Keys
 const keysPath = path.join(__dirname, 'vapid-keys.json');
@@ -105,159 +162,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Database Setup
-const dbPath = process.env.DATABASE_PATH || path.join(__dirname, 'panchayat.db');
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Database connection error:', err);
-  } else {
-    console.log('📊 Database connected:', dbPath);
-  }
-});
-
-// Run database queries as promises
-const dbRun = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function(err) {
-      if (err) reject(err);
-      else resolve(this);
-    });
-  });
-};
-
-const dbGet = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
-};
-
-const dbAll = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
-};
-
-// Create tables
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS subscriptions (
-      id TEXT PRIMARY KEY,
-      endpoint TEXT NOT NULL UNIQUE,
-      auth TEXT NOT NULL,
-      p256dh TEXT NOT NULL,
-      client_id TEXT,
-      device_name TEXT,
-      browser_name TEXT,
-      user_agent TEXT,
-      subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      is_active INTEGER DEFAULT 1
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS notifications_sent (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      message TEXT NOT NULL,
-      image_url TEXT,
-      sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      total_subscribers INTEGER,
-      successful_sends INTEGER DEFAULT 0,
-      failed_sends INTEGER DEFAULT 0
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS notification_delivery (
-      id TEXT PRIMARY KEY,
-      notification_id TEXT NOT NULL,
-      subscription_id TEXT NOT NULL,
-      status TEXT DEFAULT 'pending',
-      delivered_at DATETIME,
-      error_message TEXT,
-      FOREIGN KEY (notification_id) REFERENCES notifications_sent(id),
-      FOREIGN KEY (subscription_id) REFERENCES subscriptions(id)
-    )
-  `);
-
-  db.run('ALTER TABLE subscriptions ADD COLUMN client_id TEXT', (err) => {
-    if (err && !err.message.includes('duplicate column name')) {
-      console.error('Migration error adding client_id:', err.message);
-    }
-  });
-
-  db.run(`
-    UPDATE subscriptions
-    SET is_active = 0
-    WHERE auth IS NULL OR auth = '' OR p256dh IS NULL OR p256dh = ''
-  `);
-
-  db.run(`
-    UPDATE subscriptions
-    SET is_active = 0
-    WHERE (client_id IS NULL OR client_id = '')
-      AND id NOT IN (
-        SELECT id
-        FROM subscriptions latest
-        WHERE latest.user_agent = subscriptions.user_agent
-          AND (latest.client_id IS NULL OR latest.client_id = '')
-        ORDER BY datetime(latest.subscribed_at) DESC, latest.rowid DESC
-        LIMIT 1
-      )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS applications (
-      id TEXT PRIMARY KEY,
-      type TEXT,
-      name TEXT,
-      mobile TEXT,
-      ward TEXT,
-      category TEXT,
-      date TEXT,
-      time TEXT,
-      status TEXT DEFAULT 'Pending',
-      description TEXT,
-      note TEXT,
-      location_lat REAL,
-      location_lng REAL,
-      location_address TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  const applicationMigrations = [
-    ['type', 'ALTER TABLE applications ADD COLUMN type TEXT'],
-    ['name', 'ALTER TABLE applications ADD COLUMN name TEXT'],
-    ['mobile', 'ALTER TABLE applications ADD COLUMN mobile TEXT'],
-    ['ward', 'ALTER TABLE applications ADD COLUMN ward TEXT'],
-    ['category', 'ALTER TABLE applications ADD COLUMN category TEXT'],
-    ['date', 'ALTER TABLE applications ADD COLUMN date TEXT'],
-    ['time', 'ALTER TABLE applications ADD COLUMN time TEXT'],
-    ['status', "ALTER TABLE applications ADD COLUMN status TEXT DEFAULT 'Pending'"],
-    ['description', 'ALTER TABLE applications ADD COLUMN description TEXT'],
-    ['note', 'ALTER TABLE applications ADD COLUMN note TEXT'],
-    ['location_lat', 'ALTER TABLE applications ADD COLUMN location_lat REAL'],
-    ['location_lng', 'ALTER TABLE applications ADD COLUMN location_lng REAL'],
-    ['location_address', 'ALTER TABLE applications ADD COLUMN location_address TEXT'],
-    ['created_at', 'ALTER TABLE applications ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP']
-  ];
-
-  applicationMigrations.forEach(([column, sql]) => {
-    db.run(sql, (err) => {
-      if (err && !err.message.includes('duplicate column name')) {
-        console.error(`Migration error adding applications.${column}:`, err.message);
-      }
-    });
-  });
-});
-
 // Helper function to generate ID
 const generateId = () => crypto.randomBytes(16).toString('hex');
 
@@ -334,35 +238,30 @@ app.post('/api/subscribe', async (req, res) => {
     else if (userAgent.includes('Edge')) browserName = 'Edge';
 
     if (clientId) {
-      await dbRun(
-        'UPDATE subscriptions SET is_active = 0 WHERE client_id = ? AND endpoint != ?',
-        [clientId, subscription.endpoint]
+      await Subscription.updateMany(
+        { clientId: clientId, endpoint: { $ne: subscription.endpoint } },
+        { isActive: false }
       );
     }
 
-    await dbRun(`
-      INSERT INTO subscriptions 
-      (id, endpoint, auth, p256dh, client_id, device_name, browser_name, user_agent, is_active, subscribed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
-      ON CONFLICT(endpoint) DO UPDATE SET
-        auth = excluded.auth,
-        p256dh = excluded.p256dh,
-        client_id = excluded.client_id,
-        device_name = excluded.device_name,
-        browser_name = excluded.browser_name,
-        user_agent = excluded.user_agent,
-        is_active = 1,
-        subscribed_at = CURRENT_TIMESTAMP
-    `, [
-      id,
-      subscription.endpoint,
-      subscription.keys.auth,
-      subscription.keys.p256dh,
-      clientId || null,
-      deviceName || 'Desktop',
-      browserName,
-      userAgent
-    ]);
+    await Subscription.updateOne(
+      { endpoint: subscription.endpoint },
+      {
+        $set: {
+          _id: id,
+          endpoint: subscription.endpoint,
+          auth: subscription.keys.auth,
+          p256dh: subscription.keys.p256dh,
+          clientId: clientId || null,
+          deviceName: deviceName || 'Desktop',
+          browserName: browserName,
+          userAgent: userAgent,
+          isActive: true,
+          subscribedAt: new Date()
+        }
+      },
+      { upsert: true }
+    );
 
     res.json({ 
       success: true, 
@@ -378,8 +277,8 @@ app.post('/api/subscribe', async (req, res) => {
 // 2. Get all active subscriptions count
 app.get('/api/subscriptions-count', async (req, res) => {
   try {
-    const result = await dbGet('SELECT COUNT(*) as count FROM subscriptions WHERE is_active = 1');
-    res.json({ count: result.count });
+    const count = await Subscription.countDocuments({ isActive: true });
+    res.json({ count });
   } catch (error) {
     console.error('Count error:', error);
     res.status(500).json({ error: error.message });
@@ -389,12 +288,9 @@ app.get('/api/subscriptions-count', async (req, res) => {
 // 3. Get all active subscriptions (for admin only - add auth later)
 app.get('/api/subscriptions', async (req, res) => {
   try {
-    const subscriptions = await dbAll(`
-      SELECT id, device_name, browser_name, subscribed_at 
-      FROM subscriptions 
-      WHERE is_active = 1
-      ORDER BY subscribed_at DESC
-    `);
+    const subscriptions = await Subscription.find({ isActive: true })
+      .select('_id deviceName browserName subscribedAt')
+      .sort({ subscribedAt: -1 });
     
     res.json({ subscriptions });
   } catch (error) {
@@ -412,7 +308,7 @@ app.post('/api/unsubscribe', async (req, res) => {
       return res.status(400).json({ error: 'Endpoint required' });
     }
 
-    await dbRun('UPDATE subscriptions SET is_active = 0 WHERE endpoint = ?', [endpoint]);
+    await Subscription.updateOne({ endpoint }, { isActive: false });
 
     res.json({ success: true, message: 'Unsubscribed successfully' });
   } catch (error) {
@@ -453,9 +349,7 @@ app.post('/api/send-notification', async (req, res) => {
     }
 
     // Get all active subscriptions
-    const subscriptions = await dbAll(`
-      SELECT * FROM subscriptions WHERE is_active = 1
-    `);
+    const subscriptions = await Subscription.find({ isActive: true });
 
     if (subscriptions.length === 0) {
       return res.json({ 
@@ -469,11 +363,18 @@ app.post('/api/send-notification', async (req, res) => {
     // Create notification record
     const notificationId = generateId();
     
-    await dbRun(`
-      INSERT INTO notifications_sent 
-      (id, title, message, image_url, total_subscribers)
-      VALUES (?, ?, ?, ?, ?)
-    `, [notificationId, title, message, imageUrl, subscriptions.length]);
+    const notificationRecord = new NotificationSent({
+      _id: notificationId,
+      title,
+      message,
+      imageUrl,
+      sentAt: new Date(),
+      totalSubscribers: subscriptions.length,
+      successfulSends: 0,
+      failedSends: 0
+    });
+    
+    await notificationRecord.save();
 
     // Send to each subscription
     let successCount = 0;
@@ -481,7 +382,7 @@ app.post('/api/send-notification', async (req, res) => {
 
     for (const subscription of subscriptions) {
       try {
-        console.log(`📤 Sending notification to: ${subscription.device_name} (${subscription.browser_name})`);
+        console.log(`📤 Sending notification to: ${subscription.deviceName} (${subscription.browserName})`);
         
         // Create notification payload
         const payload = JSON.stringify({
@@ -508,51 +409,55 @@ app.post('/api/send-notification', async (req, res) => {
         // Send push notification using web-push library
         try {
           await webpush.sendNotification(pushSubscription, payload);
-          console.log(`✅ Push sent to ${subscription.device_name}`);
+          console.log(`✅ Push sent to ${subscription.deviceName}`);
           
           // Create delivery record
           const deliveryId = generateId();
-          await dbRun(`
-            INSERT INTO notification_delivery 
-            (id, notification_id, subscription_id, status)
-            VALUES (?, ?, ?, ?)
-          `, [deliveryId, notificationId, subscription.id, 'sent']);
+          const deliveryRecord = new NotificationDelivery({
+            _id: deliveryId,
+            notificationId,
+            subscriptionId: subscription._id,
+            status: 'sent'
+          });
           
+          await deliveryRecord.save();
           successCount++;
         } catch (pushError) {
-          console.error(`⚠️ Web push failed for ${subscription.device_name}:`, pushError.message);
+          console.error(`⚠️ Web push failed for ${subscription.deviceName}:`, pushError.message);
 
           if (shouldDeactivateSubscription(pushError)) {
-            await dbRun('UPDATE subscriptions SET is_active = 0 WHERE id = ?', [subscription.id]);
-            console.warn(`Deactivated invalid subscription: ${subscription.id}`);
+            await Subscription.updateOne({ _id: subscription._id }, { isActive: false });
+            console.warn(`Deactivated invalid subscription: ${subscription._id}`);
           }
           
           // Still log it as sent to database (browser might be offline)
           const deliveryId = generateId();
-          await dbRun(`
-            INSERT INTO notification_delivery 
-            (id, notification_id, subscription_id, status, error_message)
-            VALUES (?, ?, ?, ?, ?)
-          `, [deliveryId, notificationId, subscription.id, 'failed', pushError.message]);
+          const deliveryRecord = new NotificationDelivery({
+            _id: deliveryId,
+            notificationId,
+            subscriptionId: subscription._id,
+            status: 'failed',
+            errorMessage: pushError.message
+          });
           
+          await deliveryRecord.save();
           failCount++;
         }
       } catch (error) {
-        console.error(`❌ Error processing subscription ${subscription.id}:`, error);
+        console.error(`❌ Error processing subscription ${subscription._id}:`, error);
         if (shouldDeactivateSubscription(error)) {
-          await dbRun('UPDATE subscriptions SET is_active = 0 WHERE id = ?', [subscription.id]);
-          console.warn(`Deactivated invalid subscription: ${subscription.id}`);
+          await Subscription.updateOne({ _id: subscription._id }, { isActive: false });
+          console.warn(`Deactivated invalid subscription: ${subscription._id}`);
         }
         failCount++;
       }
     }
 
     // Update notification record with counts
-    await dbRun(`
-      UPDATE notifications_sent 
-      SET successful_sends = ?, failed_sends = ?
-      WHERE id = ?
-    `, [successCount, failCount, notificationId]);
+    await NotificationSent.updateOne(
+      { _id: notificationId },
+      { successfulSends: successCount, failedSends: failCount }
+    );
 
     broadcastLiveNotification({
       notificationId,
@@ -591,11 +496,9 @@ app.post('/api/send-notification', async (req, res) => {
 // 6. Get notification history
 app.get('/api/notifications', async (req, res) => {
   try {
-    const notifications = await dbAll(`
-      SELECT * FROM notifications_sent 
-      ORDER BY sent_at DESC 
-      LIMIT 50
-    `);
+    const notifications = await NotificationSent.find({})
+      .sort({ sentAt: -1 })
+      .limit(50);
 
     res.json({ notifications });
   } catch (error) {
@@ -609,20 +512,20 @@ app.get('/api/notifications/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const notification = await dbGet(`
-      SELECT * FROM notifications_sent WHERE id = ?
-    `, [id]);
+    const notification = await NotificationSent.findById(id);
 
     if (!notification) {
       return res.status(404).json({ error: 'Notification not found' });
     }
 
-    const deliveries = await dbAll(`
-      SELECT d.*, s.device_name, s.browser_name
-      FROM notification_delivery d
-      JOIN subscriptions s ON d.subscription_id = s.id
-      WHERE d.notification_id = ?
-    `, [id]);
+    // SQLite JOIN ki tarah MongoDB Aggregation (Frontend admin panel format match karne ke liye)
+    const deliveries = await NotificationDelivery.aggregate([
+      { $match: { notificationId: id } },
+      { $lookup: { from: 'subscriptions', localField: 'subscriptionId', foreignField: '_id', as: 'sub' } },
+      { $unwind: { path: '$sub', preserveNullAndEmptyArrays: true } },
+      { $addFields: { device_name: '$sub.deviceName', browser_name: '$sub.browserName', error_message: '$errorMessage' } },
+      { $project: { sub: 0 } }
+    ]);
 
     res.json({ notification, deliveries });
   } catch (error) {
@@ -644,16 +547,25 @@ app.post('/api/applications', async (req, res) => {
       });
     }
     
-    await dbRun(`
-      INSERT INTO applications 
-      (id, type, name, mobile, ward, category, date, time, status, description, note, location_lat, location_lng, location_address)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      id, type, name, mobile, ward, category, date, time, status || 'Pending', description, note || '', 
-      location?.lat || null, 
-      location?.lng || null, 
-      location?.address || null
-    ]);
+    const application = new Application({
+      _id: id,
+      type,
+      name,
+      mobile: mobile || null,
+      ward: ward || null,
+      category: category || null,
+      date: date || null,
+      time: time || null,
+      status: status || 'Pending',
+      description,
+      note: note || '',
+      locationLat: location?.lat || null,
+      locationLng: location?.lng || null,
+      locationAddress: location?.address || null,
+      createdAt: new Date()
+    });
+    
+    await application.save();
     
     console.log(`✅ Application submitted: ${id} (${type})`);
     res.status(201).json({ 
@@ -676,7 +588,7 @@ app.post('/api/applications', async (req, res) => {
 app.get('/api/applications/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const application = await dbGet('SELECT * FROM applications WHERE id = ?', [id]);
+    const application = await Application.findById(id);
     
     if (!application) {
       return res.status(404).json({ error: 'Application not found' });
@@ -692,7 +604,7 @@ app.get('/api/applications/:id', async (req, res) => {
 // 10. Get all applications (Admin view)
 app.get('/api/applications', async (req, res) => {
   try {
-    const applications = await dbAll('SELECT * FROM applications ORDER BY created_at DESC');
+    const applications = await Application.find({}).sort({ createdAt: -1 });
     res.json({ applications });
   } catch (error) {
     console.error('Get all applications error:', error);
@@ -705,9 +617,9 @@ app.put('/api/applications/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { status, note } = req.body;
-    await dbRun(
-      'UPDATE applications SET status = ?, note = ? WHERE id = ?',
-      [status, note, id]
+    await Application.updateOne(
+      { _id: id },
+      { status, note }
     );
     res.json({ success: true, message: 'Application updated successfully' });
   } catch (error) {
@@ -720,7 +632,7 @@ app.put('/api/applications/:id', async (req, res) => {
 app.delete('/api/applications/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await dbRun('DELETE FROM applications WHERE id = ?', [id]);
+    await Application.deleteOne({ _id: id });
     res.json({ success: true, message: 'Application deleted successfully' });
   } catch (error) {
     console.error('Delete application error:', error);
@@ -743,8 +655,9 @@ app.get('/api/health', cors(), (req, res) => {
       cors_enabled: true
     },
     database: {
-      path: dbPath,
-      exists: fs.existsSync(dbPath)
+      type: 'MongoDB Atlas',
+      connected: mongoose.connection.readyState === 1,
+      uri: MONGODB_URI.substring(0, 50) + '...'
     },
     vapid: {
       configured: !!vapidKeys.publicKey,
@@ -769,19 +682,21 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 Access URLs:`);
   console.log(`   Local: http://localhost:${PORT}`);
   console.log(`   Network: http://0.0.0.0:${PORT}`);
-  console.log(`📊 Database: ${dbPath}`);
+  console.log(`📊 Database: MongoDB Atlas (panchayatDB)`);
   console.log(`🔐 Admin Password: ${process.env.ADMIN_PASSWORD || 'admin123'}`);
   console.log(`📖 API Documentation: http://localhost:${PORT}/api/health`);
   console.log(`🔗 CORS Origins configured for production deployment`);
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
-  db.close((err) => {
-    if (err) console.error('Database close error:', err);
-    else console.log('\n✅ Database connection closed');
-    process.exit(0);
-  });
+process.on('SIGINT', async () => {
+  try {
+    await mongoose.connection.close();
+    console.log('\n✅ MongoDB connection closed');
+  } catch (err) {
+    console.error('MongoDB close error:', err);
+  }
+  process.exit(0);
 });
 
 export default app;
