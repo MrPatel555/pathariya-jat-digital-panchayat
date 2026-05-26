@@ -84,62 +84,106 @@ function AavedanSujhav() {
     return () => clearInterval(interval);
   }, [submittedData]);
 
-  // --- Checkbox Permission Logic - सिर्फ Location ---
+  // --- Checkbox Permission Logic - Location (GPS + IP Fallback) ---
   const handlePermissionChange = (e) => {
     const checked = e.target.checked;
     setIsCheckboxChecked(checked);
     console.log('✅ Permission checkbox:', checked);
 
     if (checked) {
-      // लाइव लोकेशन परमिशन - Simple & Direct
-      if ('geolocation' in navigator) {
-        console.log('📍 Requesting location permission...');
-        
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            // ✅ Location मिल गया
-            const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            console.log('📍 ✅ Location obtained:', newLoc);
-            
-            try {
-              // Address reverse-geocode करने की कोशिश
-              console.log('🌐 Fetching address...');
-              const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${newLoc.lat}&lon=${newLoc.lng}`);
-              if (res.ok) {
-                const data = await res.json();
-                newLoc.address = data.display_name;
-                console.log('✅ Address:', newLoc.address);
-              }
-            } catch (err) {
-              console.warn('⚠️ Address not available, using coordinates');
-              newLoc.address = `${newLoc.lat.toFixed(4)}, ${newLoc.lng.toFixed(4)}`;
-            }
-            
-            console.log('📍 Final location:', newLoc);
-            setLocation(newLoc);
-          },
-          (err) => {
-            // Permission denied
-            console.error('❌ Location permission error:', err);
-            setIsCheckboxChecked(false);
-            
-            if (err.code === err.PERMISSION_DENIED) {
-              alert("❌ आपने लोकेशन की अनुमति देने से मना कर दिया है। \n\n🔒 फॉर्म जमा करने के लिए:\n1. URL बार में 🔒 पर क्लिक करें\n2. Location को 'Allow' करें\n3. फिर से checkbox दबाएं");
-            } else {
-              alert("⚠️ लोकेशन प्राप्त नहीं हो सकी। कृपया Location चालू करें।");
-            }
-          },
-          { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
-        );
-      } else {
-        console.error('❌ Geolocation not available');
-        setIsCheckboxChecked(false);
-        alert("आपका ब्राउज़र लोकेशन सर्विस सपोर्ट नहीं करता है।");
-      }
+      requestLocation();
     } else {
       console.log('📍 Location cleared');
       setLocation(null);
     }
+  };
+
+  // Location request with GPS + IP fallback
+  const requestLocation = async () => {
+    try {
+      if ('geolocation' in navigator) {
+        console.log('📍 Step 1: Trying GPS...');
+        
+        // GPS को 5 सेकंड देंगे, अगर fail हो तो IP से लेंगे
+        const gpsPromise = new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              console.log('📍 ✅ GPS successful:', pos.coords);
+              resolve({ type: 'gps', lat: pos.coords.latitude, lng: pos.coords.longitude });
+            },
+            (err) => {
+              console.warn('📍 GPS failed:', err.code);
+              reject(err);
+            },
+            { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
+          );
+        });
+
+        try {
+          // GPS की कोशिश करें
+          const gpsResult = await gpsPromise;
+          await setLocationData(gpsResult.lat, gpsResult.lng, 'GPS');
+        } catch (gpsErr) {
+          // GPS fail हो गया - IP fallback करेंगे
+          console.warn('📍 GPS not available, trying IP-based location...');
+          
+          if (gpsErr.code === gpsErr.PERMISSION_DENIED) {
+            // User ने permission deny किया
+            alert("❌ आपने लोकेशन की अनुमति देने से मना कर दिया है।\n\n💡 Desktop पर: बिना GPS के IP से Location मिलेगा\nMobile पर: कृपया GPS को 'Allow' करें");
+            setIsCheckboxChecked(false);
+            return;
+          }
+
+          // GPS fail - अब IP से location लेंगे
+          try {
+            console.log('🌐 Fetching location from IP API...');
+            const ipRes = await fetch('https://ip-api.com/json/?fields=lat,lon,city,regionName,country');
+            
+            if (ipRes.ok) {
+              const ipData = await ipRes.json();
+              console.log('📍 ✅ IP Location:', ipData);
+              await setLocationData(ipData.lat, ipData.lon, 'IP-Based (Approximate)');
+            } else {
+              throw new Error('IP API failed');
+            }
+          } catch (ipErr) {
+            console.error('❌ Both GPS and IP location failed:', ipErr);
+            setIsCheckboxChecked(false);
+            alert("⚠️ लोकेशन प्राप्त नहीं हो सकी। कृपया:\n1. GPS चालू करें (Mobile)\n2. या बाद में पुनः प्रयास करें (Desktop)");
+          }
+        }
+      } else {
+        console.error('❌ Geolocation not supported');
+        setIsCheckboxChecked(false);
+        alert("आपका ब्राउज़र लोकेशन सर्विस सपोर्ट नहीं करता है।");
+      }
+    } catch (err) {
+      console.error('❌ Location error:', err);
+      setIsCheckboxChecked(false);
+    }
+  };
+
+  // Helper function to set location data
+  const setLocationData = async (lat, lng, locationType) => {
+    const newLoc = { lat, lng, type: locationType };
+    console.log(`📍 Location (${locationType}):`, newLoc);
+    
+    try {
+      // Address reverse-geocode करने की कोशिश
+      console.log('🌐 Fetching address...');
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+      if (res.ok) {
+        const data = await res.json();
+        newLoc.address = data.display_name;
+        console.log('✅ Address:', newLoc.address);
+      }
+    } catch (err) {
+      console.warn('⚠️ Address not available');
+      newLoc.address = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    }
+    
+    console.log('📍 Final location:', newLoc);
+    setLocation(newLoc);
   };
 
   // --- Voice Typing Logic ---
