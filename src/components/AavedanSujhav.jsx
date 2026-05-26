@@ -84,87 +84,61 @@ function AavedanSujhav() {
     return () => clearInterval(interval);
   }, [submittedData]);
 
-  // --- Checkbox Permission Logic ---
+  // --- Checkbox Permission Logic - सिर्फ Location ---
   const handlePermissionChange = (e) => {
     const checked = e.target.checked;
     setIsCheckboxChecked(checked);
-    console.log('✅ Checkbox changed:', checked);
+    console.log('✅ Permission checkbox:', checked);
 
     if (checked) {
-      requestAllPermissions();
+      // लाइव लोकेशन परमिशन - Simple & Direct
+      if ('geolocation' in navigator) {
+        console.log('📍 Requesting location permission...');
+        
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            // ✅ Location मिल गया
+            const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            console.log('📍 ✅ Location obtained:', newLoc);
+            
+            try {
+              // Address reverse-geocode करने की कोशिश
+              console.log('🌐 Fetching address...');
+              const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${newLoc.lat}&lon=${newLoc.lng}`);
+              if (res.ok) {
+                const data = await res.json();
+                newLoc.address = data.display_name;
+                console.log('✅ Address:', newLoc.address);
+              }
+            } catch (err) {
+              console.warn('⚠️ Address not available, using coordinates');
+              newLoc.address = `${newLoc.lat.toFixed(4)}, ${newLoc.lng.toFixed(4)}`;
+            }
+            
+            console.log('📍 Final location:', newLoc);
+            setLocation(newLoc);
+          },
+          (err) => {
+            // Permission denied
+            console.error('❌ Location permission error:', err);
+            setIsCheckboxChecked(false);
+            
+            if (err.code === err.PERMISSION_DENIED) {
+              alert("❌ आपने लोकेशन की अनुमति देने से मना कर दिया है। \n\n🔒 फॉर्म जमा करने के लिए:\n1. URL बार में 🔒 पर क्लिक करें\n2. Location को 'Allow' करें\n3. फिर से checkbox दबाएं");
+            } else {
+              alert("⚠️ लोकेशन प्राप्त नहीं हो सकी। कृपया Location चालू करें।");
+            }
+          },
+          { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+        );
+      } else {
+        console.error('❌ Geolocation not available');
+        setIsCheckboxChecked(false);
+        alert("आपका ब्राउज़र लोकेशन सर्विस सपोर्ट नहीं करता है।");
+      }
     } else {
       console.log('📍 Location cleared');
       setLocation(null);
-    }
-  };
-
-  // अलग function for requesting permissions - ताकि दोबारा बुला सकें
-  const requestAllPermissions = async () => {
-    try {
-      console.log('🔔 Step 1: Requesting Location...');
-      
-      // पहले Location मांगें
-      await new Promise((resolve, reject) => {
-        if ('geolocation' in navigator) {
-          navigator.geolocation.getCurrentPosition(
-            async (pos) => {
-              const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-              console.log('📍 ✅ Location obtained:', newLoc);
-              
-              try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${newLoc.lat}&lon=${newLoc.lng}`);
-                if (res.ok) {
-                  const data = await res.json();
-                  newLoc.address = data.display_name;
-                  console.log('✅ Address:', newLoc.address);
-                }
-              } catch (err) {
-                console.warn('⚠️ Address not available');
-                newLoc.address = `${newLoc.lat.toFixed(4)}, ${newLoc.lng.toFixed(4)}`;
-              }
-              
-              console.log('📍 Final location:', newLoc);
-              setLocation(newLoc);
-              resolve();
-            },
-            (err) => {
-              console.error('❌ Location error:', err);
-              setIsCheckboxChecked(false);
-              
-              if (err.code === err.PERMISSION_DENIED) {
-                alert("❌ आपने लोकेशन की अनुमति देने से मना कर दिया है। \n\n🔒 फॉर्म जमा करने के लिए:\n1. URL बार में 🔒 पर क्लिक करें\n2. Location को 'Allow' करें\n3. फिर से checkbox दबाएं");
-              } else {
-                alert("⚠️ लोकेशन प्राप्त नहीं हो सकी।");
-              }
-              reject(err);
-            },
-            { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
-          );
-        } else {
-          alert("आपका ब्राउज़र लोकेशन सर्विस सपोर्ट नहीं करता है।");
-          setIsCheckboxChecked(false);
-          reject(new Error('Geolocation not available'));
-        }
-      });
-
-      console.log('🔔 Step 2: Requesting Notification Permission...');
-      
-      // फिर Notification मांगें
-      if ('Notification' in window) {
-        const permission = await Notification.requestPermission();
-        console.log('🔔 Notification permission result:', permission);
-        
-        if (permission === 'granted') {
-          console.log('✅ Notification permission granted!');
-        } else if (permission === 'denied') {
-          console.warn('⚠️ Notification permission denied');
-        }
-      }
-
-      console.log('✅ All permissions requested successfully!');
-    } catch (error) {
-      console.error('❌ Permission error:', error);
-      setIsCheckboxChecked(false);
     }
   };
 

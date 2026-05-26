@@ -28,7 +28,6 @@ import BeforeAfter from './components/BeforeAfter';
 import AavedanSujhav from './components/AavedanSujhav';
 import AdminDashboard from './components/AdminDashboard';
 import PermissionModal from './components/PermissionModal';
-import PermissionGate from './components/PermissionGate';
 import { subscriptionManager } from './utils/subscriptionManager';
 
 function App() {
@@ -51,7 +50,7 @@ function App() {
   // /admin और #admin दोनों के लिए परफेक्ट राउटिंग
   const isAdminRoute = currentPath.includes('/admin') || currentPath.includes('#admin');
 
-  const appContent = (
+  return (
     <div className="App">
       
       {/* Notification Permission Modal (अगर पहले नहीं पूछा गया है तो दिखेगा) */}
@@ -103,12 +102,6 @@ function App() {
       
       {!isAdminRoute && <Footer />}
     </div>
-  );
-
-  return (
-    <PermissionGate>
-      {appContent}
-    </PermissionGate>
   );
 }
 
